@@ -6,10 +6,6 @@ using UnityEngine;
 
 namespace MeshLODStudio.Editor
 {
-    /// <summary>
-    /// Performs non-destructive deep inspection of Prefab assets, hierarchies,
-    /// MeshFilters, MeshRenderers, existing LODGroups, nested prefabs, and ModelImporters.
-    /// </summary>
     public static class PrefabScannerAndValidator
     {
         public static PrefabScanReport ScanPrefabAsset(GameObject prefabAsset, MeshLODStudioSettings settings = null)
@@ -49,7 +45,6 @@ namespace MeshLODStudio.Editor
                 report.warnings.Add($"Prefab '{assetPath}' resides outside 'Assets/' (read-only package) and cannot be modified in place.");
             }
 
-            // Collect all existing LODGroup renderer memberships so we don't double-wrap generated child LODs
             var renderersInExistingLodGroups = new HashSet<Renderer>();
             LODGroup[] existingGroups = prefabAsset.GetComponentsInChildren<LODGroup>(true);
             report.existingLODGroupCount = existingGroups.Length;
@@ -86,7 +81,6 @@ namespace MeshLODStudio.Editor
             HashSet<Renderer> renderersInExistingLodGroups,
             MeshLODStudioSettings settings)
         {
-            // Skip auto-generated MeshLOD Studio child objects during primary mesh scan
             if (current.name.Contains("_MeshLOD_Child_LOD"))
                 return;
 
@@ -213,7 +207,9 @@ namespace MeshLODStudio.Editor
                 }
             }
 
-            node.lodLevels = MeshLODDetectorAndExtractor.AnalyzeMeshLodLevels(mesh);
+            node.lodLevels = MeshLODDetectorAndExtractor.AnalyzeMeshLodLevels(mesh, 8, true, 6);
+            node.maxAvailableLodCount = node.lodLevels.Count;
+
             if (node.detectedMeshLodCount > report.maxDetectedLodLevels)
                 report.maxDetectedLodLevels = node.detectedMeshLodCount;
 
@@ -224,7 +220,7 @@ namespace MeshLODStudio.Editor
                     ? NodeCompatibilityStatus.AlreadyConvertedByStudio
                     : NodeCompatibilityStatus.HasExistingManualLODGroup;
                 node.statusMessage = studioConverted
-                    ? $"Converted by MeshLOD Studio ({node.detectedMeshLodCount} source Mesh LODs)."
+                    ? $"Converted by MeshLOD Studio ({node.detectedMeshLodCount} native Mesh LODs)."
                     : "Already has a manual LODGroup component.";
                 node.selectedForConversion = false;
                 return;
@@ -257,7 +253,7 @@ namespace MeshLODStudio.Editor
                 else
                 {
                     node.status = NodeCompatibilityStatus.MeshLODNotEnabledOnImporter;
-                    node.statusMessage = "Mesh has 1 LOD level. Enable 'Generate Mesh LODs' on ModelImporter to generate levels.";
+                    node.statusMessage = "Mesh has 1 native LOD level. Enable 'Generate Mesh LODs' on ModelImporter.";
                 }
                 node.selectedForConversion = false;
                 report.unsupportedNodeCount++;
@@ -265,9 +261,9 @@ namespace MeshLODStudio.Editor
             }
 
             node.status = NodeCompatibilityStatus.Compatible;
-            node.statusMessage = $"Ready ({node.detectedMeshLodCount} Mesh LOD levels, {node.baseTriangleCount} base tris).";
+            node.statusMessage = $"Ready ({node.detectedMeshLodCount} native Mesh LODs, extendable up to {node.maxAvailableLodCount} LODs with far decimation).";
             node.selectedForConversion = true;
-            node.maxLodLevelsToExtract = Mathf.Min(4, node.detectedMeshLodCount);
+            node.maxLodLevelsToExtract = 8;
             report.compatibleNodeCount++;
         }
 
