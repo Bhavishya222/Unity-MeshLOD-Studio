@@ -7,9 +7,8 @@ using UnityEngine;
 namespace MeshLODStudio.Editor
 {
     /// <summary>
-    /// Non-destructive interactive 3D LOD Preview Controller using Unity's PreviewRenderUtility.
-    /// Caches temporary extracted meshes for each LOD level in memory so the user can inspect
-    /// LOD0, LOD1, LOD2, wireframe overlay, and simulated camera distances without modifying assets.
+    /// Interactive 3D LOD Preview Controller supporting up to 8 LOD levels (LOD0..LOD7),
+    /// including both native Unity 6.3 Mesh LODs and synthesized far-distance decimated meshes.
     /// </summary>
     public sealed class MeshLODPreviewController : IDisposable
     {
@@ -21,7 +20,7 @@ namespace MeshLODStudio.Editor
         public Vector2 orbitAngles = new Vector2(25f, -35f);
         public float simulatedDistanceMeters = 15f;
         public float cameraFov = 60f;
-        public int forcedPreviewLod = -1; // -1 = Auto by distance, >= 0 = Locked to specific LOD
+        public int forcedPreviewLod = -1;
         public bool showWireframe = false;
         public int activeRenderedLodIndex { get; private set; }
         public int activeRenderedTriangles { get; private set; }
@@ -42,14 +41,18 @@ namespace MeshLODStudio.Editor
             }
         }
 
-        public Mesh GetOrBuildPreviewLodMesh(int lodIndex)
+        public Mesh GetOrBuildPreviewLodMesh(int lodIndex, int minTrianglesFloor = 6)
         {
             if (currentSourceMesh == null) return null;
-            int clamped = Mathf.Clamp(lodIndex, 0, Mathf.Max(0, currentSourceMesh.lodCount - 1));
+            int clamped = Mathf.Clamp(lodIndex, 0, 7);
 
             if (!cachedLodMeshes.TryGetValue(clamped, out Mesh extracted) || extracted == null)
             {
-                extracted = MeshLODDetectorAndExtractor.ExtractStandaloneLodMesh(currentSourceMesh, clamped, true);
+                extracted = MeshLODDetectorAndExtractor.ExtractOrSynthesizeLodMesh(
+                    currentSourceMesh,
+                    clamped,
+                    minTrianglesFloor,
+                    true);
                 extracted.hideFlags = HideFlags.HideAndDontSave;
                 cachedLodMeshes[clamped] = extracted;
             }
@@ -63,6 +66,13 @@ namespace MeshLODStudio.Editor
 
             EnsureInitialized();
 
+            int maxPreviewTiers = activePreset != null
+                ? (activePreset.synthesizeExtraFarLods ? activePreset.maxLodTiers : Mathf.Min(activePreset.maxLodTiers, currentSourceMesh.lodCount))
+                : currentSourceMesh.lodCount;
+
+            maxPreviewTiers = Mathf.Clamp(maxPreviewTiers, 1, 8);
+            int minFloor = activePreset != null ? activePreset.minTrianglesFloor : 6;
+
             float objSize = DistanceThresholdCalculator.GetObjectWorldSize(currentSourceMesh.bounds);
             activeScreenRelativeHeight = DistanceThresholdCalculator.DistanceToScreenRelativeHeight(
                 simulatedDistanceMeters,
@@ -72,13 +82,12 @@ namespace MeshLODStudio.Editor
             int lodToRender = forcedPreviewLod;
             if (lodToRender < 0)
             {
-                lodToRender = EvaluateAutoLodForHeight(activeScreenRelativeHeight, currentSourceMesh.lodCount, activePreset);
+                lodToRender = EvaluateAutoLodForHeight(activeScreenRelativeHeight, maxPreviewTiers, activePreset);
             }
 
             activeRenderedLodIndex = lodToRender;
-            if (lodToRender >= currentSourceMesh.lodCount)
+            if (lodToRender >= maxPreviewTiers)
             {
-                // Culled state
                 activeRenderedTriangles = 0;
                 previewUtility.BeginPreview(rect, GUIStyle.none);
                 previewUtility.camera.clearFlags = CameraClearFlags.SolidColor;
@@ -87,14 +96,12 @@ namespace MeshLODStudio.Editor
                 return previewUtility.EndPreview();
             }
 
-            Mesh previewMesh = GetOrBuildPreviewLodMesh(lodToRender);
-            activeRenderedTriangles = previewMesh != null ? (int)(previewMesh.GetIndexCount(0) / 3) : 0;
-            if (previewMesh != null && previewMesh.subMeshCount > 1)
+            Mesh previewMesh = GetOrBuildPreviewLodMesh(lodToRender, minFloor);
+            activeRenderedTriangles = 0;
+            if (previewMesh != null)
             {
-                int totalIdx = 0;
                 for (int s = 0; s < previewMesh.subMeshCount; s++)
-                    totalIdx += (int)previewMesh.GetIndexCount(s);
-                activeRenderedTriangles = totalIdx / 3;
+                    activeRenderedTriangles += (int)previewMesh.GetIndexCount(s) / 3;
             }
 
             previewUtility.BeginPreview(rect, GUIStyle.none);
@@ -105,9 +112,9 @@ namespace MeshLODStudio.Editor
             cam.backgroundColor = new Color(0.11f, 0.12f, 0.14f, 1f);
 
             Bounds b = currentSourceMesh.bounds;
-            float visualDist = Mathf.Clamp(simulatedDistanceMeters, b.extents.magnitude * 1.1f, b.extents.magnitude * 40f);
+            float visualDist = Mathf.Clamp(simulatedDistanceMeters, b.extents.magnitude * 1.1f, b.extents.magnitude * 60f);
             cam.nearClipPlane = 0.05f;
-            cam.farClipPlane = Mathf.Max(500f, visualDist * 4f);
+            cam.farClipPlane = Mathf.Max(1000f, visualDist * 4f);
 
             Quaternion rot = Quaternion.Euler(orbitAngles.x, orbitAngles.y, 0f);
             cam.transform.position = b.center - (rot * Vector3.forward * visualDist);
@@ -144,7 +151,7 @@ namespace MeshLODStudio.Editor
         {
             if (preset == null) return 0;
             if (screenHeight < preset.cullScreenRelativeHeight)
-                return maxLodCount; // Culled
+                return maxLodCount;
 
             int tiers = Mathf.Min(maxLodCount, preset.tierScreenHeights.Count);
             for (int i = 0; i < tiers; i++)
