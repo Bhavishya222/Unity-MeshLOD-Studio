@@ -1,0 +1,19 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="True">
+    <ui:VisualElement name="studio-root" class="studio-root">
+        <ui:VisualElement name="top-header" class="top-header">
+            <ui:VisualElement style="flex-direction: row; align-items: center;">
+                <ui:Label text="MeshLOD Studio" class="brand-title" />
+                <ui:Label text="Unity 6.3 LTS • Prefab-First Mesh LOD to LODGroup Suite" class="brand-subtitle" />
+            </ui:VisualElement>
+            <ui:VisualElement name="header-actions" style="flex-direction: row; align-items: center;" />
+        </ui:VisualElement>
+        <ui:VisualElement name="body-container" class="body-container">
+            <ui:VisualElement name="nav-sidebar" class="nav-sidebar" />
+            <ui:ScrollView name="workspace-scroll" class="workspace-scroll" />
+        </ui:VisualElement>
+        <ui:VisualElement name="status-bar" class="status-bar">
+            <ui:Label name="status-message" text="Ready. Select a Prefab asset in the Project window." />
+            <ui:Label name="status-version" text="Unity 6.3 LTS URP" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

@@ -1,0 +1,141 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 0}
+  m_Name: MeshLODStudioSettings
+  m_EditorClassIdentifier: MeshLODStudio.Editor:MeshLODStudio.Editor:MeshLODStudioSettings
+  generatedAssetsRootFolder: Assets/MeshLODStudioGenerated
+  defaultExtractionStrategy: 0
+  defaultThresholdMode: 0
+  defaultReferenceCameraFov: 60
+  allowSkinnedMeshRendererConversion: 0
+  createBackupBeforeConversion: 1
+  verifyPrefabOverridesBeforeSave: 1
+  presets:
+  - presetId: 0e1a7f76658049df90e9f8fd3f7b48e9
+    presetName: High Quality
+    category: 5
+    description: Preserves maximum geometric detail to far distances; gentle culling
+      at 1%.
+    isBuiltIn: 1
+    inputMode: 0
+    extractionStrategy: 0
+    fadeMode: 1
+    animateCrossFading: 1
+    defaultCrossFadeWidth: 0.15
+    cullScreenRelativeHeight: 0.01
+    cullDistanceMeters: 180
+    maxLodTiers: 4
+    sourceLodStride: 1
+    disableShadowsOnLowestLOD: 0
+    recalculateBounds: 1
+    useOrthographicCamera: 0
+    referenceCameraFov: 60
+    referenceOrthoSize: 10
+    tierScreenHeights:
+    - 0.35
+    - 0.15
+    - 0.05
+    - 0.01
+    tierDistancesMeters:
+    - 30
+    - 65
+    - 115
+    - 180
+  - presetId: 3ed924e380e74d78b8276ef1fcc496f2
+    presetName: Balanced
+    category: 3
+    description: Standard production transitions suited for trees, rocks, and mid-ground
+      props.
+    isBuiltIn: 1
+    inputMode: 0
+    extractionStrategy: 0
+    fadeMode: 0
+    animateCrossFading: 0
+    defaultCrossFadeWidth: 0.1
+    cullScreenRelativeHeight: 0.02
+    cullDistanceMeters: 120
+    maxLodTiers: 5
+    sourceLodStride: 1
+    disableShadowsOnLowestLOD: 0
+    recalculateBounds: 1
+    useOrthographicCamera: 0
+    referenceCameraFov: 60
+    referenceOrthoSize: 10
+    tierScreenHeights:
+    - 0.45
+    - 0.2
+    - 0.08
+    - 0.02
+    - 0.02
+    tierDistancesMeters:
+    - 20
+    - 45
+    - 80
+    - 120
+    - 100
+  - presetId: 7af315b5bdad4328a1a893ee1d038b21
+    presetName: Performance
+    category: 4
+    description: Aggressively transitions to simplified Mesh LOD levels and culls
+      small details early.
+    isBuiltIn: 1
+    inputMode: 0
+    extractionStrategy: 0
+    fadeMode: 0
+    animateCrossFading: 0
+    defaultCrossFadeWidth: 0.05
+    cullScreenRelativeHeight: 0.04
+    cullDistanceMeters: 75
+    maxLodTiers: 3
+    sourceLodStride: 2
+    disableShadowsOnLowestLOD: 1
+    recalculateBounds: 1
+    useOrthographicCamera: 0
+    referenceCameraFov: 60
+    referenceOrthoSize: 10
+    tierScreenHeights:
+    - 0.55
+    - 0.25
+    - 0.04
+    - 0.02
+    tierDistancesMeters:
+    - 12
+    - 30
+    - 75
+    - 100
+  backupRecords: []
+  recentOperations:
+  - timestamp: 02:03:12
+    operationType: Scan Prefab
+    targetName: House_5_URP
+    succeeded: 1
+    summary: Found 1 compatible mesh node(s).
+  - timestamp: 02:03:12
+    operationType: Rollback
+    targetName: House_5_URP
+    succeeded: 1
+    summary: Restored original state (1 nodes).
+  - timestamp: 02:01:48
+    operationType: Scan Prefab
+    targetName: House_5_URP
+    succeeded: 1
+    summary: Found 0 compatible mesh node(s).
+  - timestamp: 02:01:48
+    operationType: Convert Prefab
+    targetName: House_5_URP
+    succeeded: 1
+    summary: Converted 1 object(s) using 'Balanced' preset.
+  - timestamp: 02:01:01
+    operationType: Scan Prefab
+    targetName: House_5_URP
+    succeeded: 1
+    summary: Found 1 compatible mesh node(s).

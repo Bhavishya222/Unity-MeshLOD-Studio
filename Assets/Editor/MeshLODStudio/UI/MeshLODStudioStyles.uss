@@ -1,0 +1,228 @@
+.studio-root {
+    flex-grow: 1;
+    flex-direction: column;
+    background-color: #18191C;
+    color: #E2E4E9;
+}
+
+.top-header {
+    height: 44px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding-left: 16px;
+    padding-right: 16px;
+    background-color: #121316;
+    border-bottom-width: 1px;
+    border-bottom-color: #2A2D34;
+}
+
+.brand-title {
+    font-size: 15px;
+    -unity-font-style: bold;
+    color: #F3F4F6;
+}
+
+.brand-subtitle {
+    font-size: 11px;
+    color: #8A919E;
+    margin-left: 10px;
+}
+
+.body-container {
+    flex-grow: 1;
+    flex-direction: row;
+}
+
+.nav-sidebar {
+    width: 205px;
+    min-width: 185px;
+    background-color: #141518;
+    border-right-width: 1px;
+    border-right-color: #2A2D34;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    padding-left: 8px;
+    padding-right: 8px;
+}
+
+.nav-section-label {
+    font-size: 10px;
+    -unity-font-style: bold;
+    color: #68707E;
+    margin-left: 8px;
+    margin-top: 8px;
+    margin-bottom: 4px;
+}
+
+.nav-button {
+    height: 30px;
+    margin-bottom: 3px;
+    border-radius: 5px;
+    border-width: 0px;
+    background-color: transparent;
+    color: #AEB5C2;
+    -unity-text-align: middle-left;
+    padding-left: 12px;
+    font-size: 12px;
+}
+
+.nav-button:hover {
+    background-color: #22252B;
+    color: #FFFFFF;
+}
+
+.nav-button-active {
+    background-color: #2563EB;
+    color: #FFFFFF;
+    -unity-font-style: bold;
+}
+
+.workspace-scroll {
+    flex-grow: 1;
+    padding: 16px;
+}
+
+.card {
+    background-color: #1F2127;
+    border-width: 1px;
+    border-color: #2E323B;
+    border-radius: 6px;
+    padding: 14px;
+    margin-bottom: 12px;
+}
+
+.card-title {
+    font-size: 13px;
+    -unity-font-style: bold;
+    color: #F3F4F6;
+    margin-bottom: 8px;
+}
+
+.metric-row {
+    flex-direction: row;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+
+.metric-box {
+    flex-grow: 1;
+    min-width: 120px;
+    background-color: #16181D;
+    border-width: 1px;
+    border-color: #282C34;
+    border-radius: 5px;
+    padding: 10px;
+    margin-right: 8px;
+    margin-bottom: 8px;
+}
+
+.metric-value {
+    font-size: 18px;
+    -unity-font-style: bold;
+    color: #60A5FA;
+}
+
+.metric-label {
+    font-size: 11px;
+    color: #8A919E;
+    margin-top: 2px;
+}
+
+.primary-button {
+    background-color: #2563EB;
+    color: #FFFFFF;
+    -unity-font-style: bold;
+    border-radius: 5px;
+    border-width: 0px;
+    height: 28px;
+    padding-left: 14px;
+    padding-right: 14px;
+}
+
+.primary-button:hover {
+    background-color: #1D4ED8;
+}
+
+.secondary-button {
+    background-color: #2B2F38;
+    color: #E2E4E9;
+    border-radius: 5px;
+    border-width: 1px;
+    border-color: #3B404C;
+    height: 28px;
+    padding-left: 12px;
+    padding-right: 12px;
+}
+
+.secondary-button:hover {
+    background-color: #363B46;
+}
+
+.danger-button {
+    background-color: #7F1D1D;
+    color: #FCA5A5;
+    border-radius: 5px;
+    border-width: 1px;
+    border-color: #991B1B;
+    height: 28px;
+    padding-left: 12px;
+    padding-right: 12px;
+}
+
+.status-bar {
+    height: 28px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding-left: 14px;
+    padding-right: 14px;
+    background-color: #121316;
+    border-top-width: 1px;
+    border-top-color: #2A2D34;
+    font-size: 11px;
+}
+
+.badge-ok {
+    background-color: #064E3B;
+    color: #6EE7B7;
+    padding-left: 6px;
+    padding-right: 6px;
+    padding-top: 2px;
+    padding-bottom: 2px;
+    border-radius: 4px;
+    font-size: 10px;
+}
+
+.badge-warn {
+    background-color: #78350F;
+    color: #FCD34D;
+    padding-left: 6px;
+    padding-right: 6px;
+    padding-top: 2px;
+    padding-bottom: 2px;
+    border-radius: 4px;
+    font-size: 10px;
+}
+
+.badge-error {
+    background-color: #7F1D1D;
+    color: #FCA5A5;
+    padding-left: 6px;
+    padding-right: 6px;
+    padding-top: 2px;
+    padding-bottom: 2px;
+    border-radius: 4px;
+    font-size: 10px;
+}
+
+.table-row {
+    flex-direction: row;
+    align-items: center;
+    padding-top: 6px;
+    padding-bottom: 6px;
+    padding-left: 8px;
+    padding-right: 8px;
+    border-bottom-width: 1px;
+    border-bottom-color: #262932;
+}
