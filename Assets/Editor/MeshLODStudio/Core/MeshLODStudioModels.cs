@@ -59,6 +59,7 @@ namespace MeshLODStudio.Editor
     public class LodLevelMetadata
     {
         public int lodIndex;
+        public bool isSynthesizedFarLod;
         public int totalIndexCount;
         public int totalTriangleCount;
         public int estimatedUniqueVertices;
@@ -89,6 +90,7 @@ namespace MeshLODStudio.Editor
         public int vertexCount;
         public int baseTriangleCount;
         public int detectedMeshLodCount;
+        public int maxAvailableLodCount;
         public Bounds localBounds;
         public Bounds worldBoundsInPrefab;
         public Material[] sharedMaterials = Array.Empty<Material>();
@@ -102,9 +104,8 @@ namespace MeshLODStudio.Editor
         public string statusMessage;
         public List<LodLevelMetadata> lodLevels = new List<LodLevelMetadata>();
 
-        // Per-node custom overrides (optional; falls back to active preset)
-        public int maxLodLevelsToExtract = 4;
-        public int lodLevelStride = 1; // 1 = every level, 2 = skip odd levels if desired
+        public int maxLodLevelsToExtract = 8;
+        public int lodLevelStride = 1;
     }
 
     [Serializable]
@@ -134,18 +135,6 @@ namespace MeshLODStudio.Editor
     }
 
     [Serializable]
-    public class LodTierConfig
-    {
-        public int tierIndex;
-        public int sourceMeshLodIndex;
-        [Range(0.001f, 1f)] public float screenRelativeTransitionHeight = 0.5f;
-        public float targetDistanceMeters = 25f;
-        [Range(0f, 1f)] public float crossFadeTransitionWidth = 0.1f;
-        public bool castShadows = true;
-        public bool receiveShadows = true;
-    }
-
-    [Serializable]
     public class MeshLODPreset
     {
         public string presetId = Guid.NewGuid().ToString("N");
@@ -159,25 +148,33 @@ namespace MeshLODStudio.Editor
         public LODFadeMode fadeMode = LODFadeMode.None;
         public bool animateCrossFading;
         [Range(0f, 1f)] public float defaultCrossFadeWidth = 0.1f;
-        [Range(0.001f, 0.25f)] public float cullScreenRelativeHeight = 0.02f;
-        public float cullDistanceMeters = 120f;
-        public int maxLodTiers = 4;
-        public int sourceLodStride = 1;
-        public bool disableShadowsOnLowestLOD = false;
+        [Range(0.0005f, 0.25f)] public float cullScreenRelativeHeight = 0.01f;
+        public float cullDistanceMeters = 180f;
+
+        [Range(2, 8)] public int maxLodTiers = 6;
+        [Range(1, 3)] public int sourceLodStride = 1;
+        public bool synthesizeExtraFarLods = true;
+        [Range(2, 64)] public int minTrianglesFloor = 6;
+        public bool disableShadowsOnLowestLOD = true;
         public bool recalculateBounds = true;
 
-        // Camera reference parameters for Distance-to-ScreenHeight math
         public bool useOrthographicCamera;
         public float referenceCameraFov = 60f;
         public float referenceOrthoSize = 10f;
 
-        // Default screen-relative transition heights for LOD0, LOD1, LOD2, LOD3, LOD4
-        public List<float> tierScreenHeights = new List<float> { 0.45f, 0.20f, 0.08f, 0.03f };
-        public List<float> tierDistancesMeters = new List<float> { 20f, 45f, 80f, 120f };
+        public List<float> tierScreenHeights = new List<float>
+        {
+            0.55f, 0.35f, 0.20f, 0.11f, 0.06f, 0.03f, 0.015f, 0.008f
+        };
+
+        public List<float> tierDistancesMeters = new List<float>
+        {
+            15f, 30f, 50f, 80f, 115f, 155f, 200f, 250f
+        };
 
         public MeshLODPreset Clone(string newName)
         {
-            var copy = new MeshLODPreset
+            return new MeshLODPreset
             {
                 presetId = Guid.NewGuid().ToString("N"),
                 presetName = newName,
@@ -193,6 +190,8 @@ namespace MeshLODStudio.Editor
                 cullDistanceMeters = this.cullDistanceMeters,
                 maxLodTiers = this.maxLodTiers,
                 sourceLodStride = this.sourceLodStride,
+                synthesizeExtraFarLods = this.synthesizeExtraFarLods,
+                minTrianglesFloor = this.minTrianglesFloor,
                 disableShadowsOnLowestLOD = this.disableShadowsOnLowestLOD,
                 recalculateBounds = this.recalculateBounds,
                 useOrthographicCamera = this.useOrthographicCamera,
@@ -201,7 +200,6 @@ namespace MeshLODStudio.Editor
                 tierScreenHeights = new List<float>(this.tierScreenHeights),
                 tierDistancesMeters = new List<float>(this.tierDistancesMeters)
             };
-            return copy;
         }
     }
 
@@ -268,7 +266,7 @@ namespace MeshLODStudio.Editor
         public string hierarchyPath;
         public Mesh sharedMesh;
         public int detectedMeshLodCount;
-        public bool selectedForConversion = false; // Explicitly false by default for safety
+        public bool selectedForConversion = false;
         public string statusSummary;
     }
 
@@ -279,6 +277,7 @@ namespace MeshLODStudio.Editor
         public ThresholdInputMode defaultThresholdMode = ThresholdInputMode.ScreenRelativePercentage;
         public float defaultReferenceCameraFov = 60f;
         public bool allowSkinnedMeshRendererConversion = false;
+        public bool allowProceduralDecimationOnSingleLodMeshes = true;
         public bool createBackupBeforeConversion = true;
         public bool verifyPrefabOverridesBeforeSave = true;
         public List<MeshLODPreset> presets = new List<MeshLODPreset>();
@@ -324,60 +323,66 @@ namespace MeshLODStudio.Editor
             {
                 presetName = "High Quality",
                 category = PresetCategory.Architecture,
-                description = "Preserves maximum geometric detail to far distances; gentle culling at 1%.",
+                description = "Up to 8 smooth LOD tiers preserving close-up detail and decimating far geometry cleanly.",
                 isBuiltIn = true,
                 inputMode = ThresholdInputMode.ScreenRelativePercentage,
                 extractionStrategy = ExtractionStrategy.StandaloneCompactedMeshAssets,
                 fadeMode = LODFadeMode.CrossFade,
                 animateCrossFading = true,
                 defaultCrossFadeWidth = 0.15f,
-                cullScreenRelativeHeight = 0.01f,
-                cullDistanceMeters = 180f,
-                maxLodTiers = 4,
+                cullScreenRelativeHeight = 0.005f,
+                cullDistanceMeters = 250f,
+                maxLodTiers = 6,
                 sourceLodStride = 1,
+                synthesizeExtraFarLods = true,
+                minTrianglesFloor = 8,
                 disableShadowsOnLowestLOD = false,
-                tierScreenHeights = new List<float> { 0.35f, 0.15f, 0.05f, 0.01f },
-                tierDistancesMeters = new List<float> { 30f, 65f, 115f, 180f }
+                tierScreenHeights = new List<float> { 0.50f, 0.30f, 0.16f, 0.08f, 0.04f, 0.02f, 0.01f, 0.005f },
+                tierDistancesMeters = new List<float> { 20f, 40f, 70f, 105f, 145f, 185f, 220f, 250f }
             });
 
             presets.Add(new MeshLODPreset
             {
                 presetName = "Balanced",
                 category = PresetCategory.Props,
-                description = "Standard production transitions suited for trees, rocks, and mid-ground props.",
+                description = "Standard 5-tier setup with automatic far-LOD decimation when Unity stops at 3 LODs.",
                 isBuiltIn = true,
                 inputMode = ThresholdInputMode.ScreenRelativePercentage,
                 extractionStrategy = ExtractionStrategy.StandaloneCompactedMeshAssets,
                 fadeMode = LODFadeMode.None,
                 animateCrossFading = false,
                 defaultCrossFadeWidth = 0.10f,
-                cullScreenRelativeHeight = 0.02f,
-                cullDistanceMeters = 120f,
-                maxLodTiers = 4,
+                cullScreenRelativeHeight = 0.01f,
+                cullDistanceMeters = 160f,
+                maxLodTiers = 5,
                 sourceLodStride = 1,
-                disableShadowsOnLowestLOD = false,
-                tierScreenHeights = new List<float> { 0.45f, 0.20f, 0.08f, 0.02f },
-                tierDistancesMeters = new List<float> { 20f, 45f, 80f, 120f }
+                synthesizeExtraFarLods = true,
+                minTrianglesFloor = 6,
+                disableShadowsOnLowestLOD = true,
+                tierScreenHeights = new List<float> { 0.52f, 0.28f, 0.14f, 0.06f, 0.025f, 0.012f, 0.006f, 0.003f },
+                tierDistancesMeters = new List<float> { 18f, 35f, 65f, 100f, 135f, 170f, 200f, 230f }
             });
 
             presets.Add(new MeshLODPreset
             {
-                presetName = "Performance",
+                presetName = "Ultra Far Decimation (8 LODs)",
                 category = PresetCategory.Vegetation,
-                description = "Aggressively transitions to simplified Mesh LOD levels and culls small details early.",
+                description = "Generates all 8 LOD levels (LOD0..LOD7), aggressively decimating far-away meshes down to minimal triangles.",
                 isBuiltIn = true,
                 inputMode = ThresholdInputMode.ScreenRelativePercentage,
                 extractionStrategy = ExtractionStrategy.StandaloneCompactedMeshAssets,
                 fadeMode = LODFadeMode.None,
                 animateCrossFading = false,
                 defaultCrossFadeWidth = 0.05f,
-                cullScreenRelativeHeight = 0.04f,
-                cullDistanceMeters = 75f,
-                maxLodTiers = 3,
-                sourceLodStride = 2,
+                cullScreenRelativeHeight = 0.004f,
+                cullDistanceMeters = 300f,
+                maxLodTiers = 8,
+                sourceLodStride = 1,
+                synthesizeExtraFarLods = true,
+                minTrianglesFloor = 4,
                 disableShadowsOnLowestLOD = true,
-                tierScreenHeights = new List<float> { 0.55f, 0.25f, 0.04f, 0.02f },
-                tierDistancesMeters = new List<float> { 12f, 30f, 75f, 100f }
+                tierScreenHeights = new List<float> { 0.60f, 0.40f, 0.25f, 0.14f, 0.07f, 0.035f, 0.015f, 0.004f },
+                tierDistancesMeters = new List<float> { 12f, 25f, 45f, 75f, 115f, 165f, 225f, 300f }
             });
         }
 
