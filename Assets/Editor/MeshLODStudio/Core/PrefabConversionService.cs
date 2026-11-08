@@ -8,9 +8,8 @@ using UnityEngine.Rendering;
 namespace MeshLODStudio.Editor
 {
     /// <summary>
-    /// Core Prefab-First conversion engine.
-    /// Converts Unity 6.3 generated Mesh LODs into native Unity LODGroups on the source prefab asset
-    /// while preserving the prefab GUID, root/child hierarchy, materials, scripts, and scene overrides.
+    /// Converts Unity 6.3 generated Mesh LODs (plus optional synthesized far-distance LOD levels up to 8 tiers)
+    /// into native Unity LODGroups on the source prefab asset.
     /// </summary>
     public static class PrefabConversionService
     {
@@ -55,7 +54,8 @@ namespace MeshLODStudio.Editor
             string prefabGuid = report.assetGuid;
             string generatedFolder = $"{settings.generatedAssetsRootFolder}/{report.prefabName}_{prefabGuid.Substring(0, Mathf.Min(8, prefabGuid.Length))}";
 
-            if (preset.extractionStrategy == ExtractionStrategy.StandaloneCompactedMeshAssets)
+            bool requiresAssetFolder = preset.extractionStrategy == ExtractionStrategy.StandaloneCompactedMeshAssets || preset.synthesizeExtraFarLods;
+            if (requiresAssetFolder)
             {
                 MeshLODStudioSettings.EnsureFolder(generatedFolder);
             }
@@ -91,8 +91,8 @@ namespace MeshLODStudio.Editor
                     if (mf == null || mr == null || mf.sharedMesh == null) continue;
 
                     Mesh sourceMesh = mf.sharedMesh;
-                    int totalMeshLods = sourceMesh.lodCount;
-                    if (totalMeshLods <= 1) continue;
+                    int nativeMeshLods = sourceMesh.lodCount;
+                    if (nativeMeshLods <= 1) continue;
 
                     var nodeBackup = new NodeBackupState
                     {
@@ -104,9 +104,18 @@ namespace MeshLODStudio.Editor
                         hadLODGroupBefore = targetTransform.GetComponent<LODGroup>() != null
                     };
 
-                    List<int> selectedSourceLodIndices = SelectLodIndicesForConversion(
-                        totalMeshLods,
+                    int maxReachableLods = preset.synthesizeExtraFarLods
+                        ? Mathf.Max(nativeMeshLods, nodeInfo.maxAvailableLodCount)
+                        : nativeMeshLods;
+
+                    int requestedMaxTiers = Mathf.Clamp(
                         Mathf.Min(preset.maxLodTiers, nodeInfo.maxLodLevelsToExtract),
+                        2,
+                        8);
+
+                    List<int> selectedSourceLodIndices = SelectLodIndicesForConversion(
+                        maxReachableLods,
+                        requestedMaxTiers,
                         Mathf.Max(1, preset.sourceLodStride));
 
                     int tierCount = selectedSourceLodIndices.Count;
@@ -117,17 +126,18 @@ namespace MeshLODStudio.Editor
 
                     var lodsArray = new LOD[tierCount];
 
-                    // Tier 0 (LOD0): Keep on the original MeshFilter + MeshRenderer so FileIDs and Scene Overrides stay intact
+                    // Tier 0 (LOD0): Keep on the original MeshFilter + MeshRenderer
                     mr.forceMeshLod = 0;
                     lodsArray[0] = new LOD(transitionHeights[0], new Renderer[] { mr })
                     {
                         fadeTransitionWidth = preset.defaultCrossFadeWidth
                     };
 
-                    // Tiers 1..N (LOD1..LODN)
+                    // Tiers 1..N (up to LOD7)
                     for (int tier = 1; tier < tierCount; tier++)
                     {
                         int srcLodIndex = selectedSourceLodIndices[tier];
+                        bool isSynthesizedFarTier = srcLodIndex >= nativeMeshLods;
                         string childName = $"{targetTransform.name}_MeshLOD_Child_LOD{tier}";
 
                         Transform existingChild = targetTransform.Find(childName);
@@ -150,15 +160,17 @@ namespace MeshLODStudio.Editor
                         MeshFilter childMf = childGo.AddComponent<MeshFilter>();
                         MeshRenderer childMr = childGo.AddComponent<MeshRenderer>();
 
-                        if (preset.extractionStrategy == ExtractionStrategy.StandaloneCompactedMeshAssets)
+                        if (preset.extractionStrategy == ExtractionStrategy.StandaloneCompactedMeshAssets || isSynthesizedFarTier)
                         {
-                            Mesh extractedMesh = MeshLODDetectorAndExtractor.ExtractStandaloneLodMesh(
+                            Mesh extractedMesh = MeshLODDetectorAndExtractor.ExtractOrSynthesizeLodMesh(
                                 sourceMesh,
                                 srcLodIndex,
+                                preset.minTrianglesFloor,
                                 true);
 
                             string safeNodeName = SanitizeFileName(targetTransform.name);
-                            string meshAssetPath = $"{generatedFolder}/{safeNodeName}_{SanitizeFileName(sourceMesh.name)}_LOD{tier}_Src{srcLodIndex}.asset";
+                            string tag = isSynthesizedFarTier ? $"FarLOD{srcLodIndex}" : $"Src{srcLodIndex}";
+                            string meshAssetPath = $"{generatedFolder}/{safeNodeName}_{SanitizeFileName(sourceMesh.name)}_LOD{tier}_{tag}.asset";
 
                             if (AssetDatabase.LoadMainAssetAtPath(meshAssetPath) != null)
                                 AssetDatabase.DeleteAsset(meshAssetPath);
@@ -237,12 +249,12 @@ namespace MeshLODStudio.Editor
                 "Convert Prefab",
                 report.prefabName,
                 true,
-                $"Converted {convertedCount} object(s) using '{preset.presetName}' preset.");
+                $"Converted {convertedCount} object(s) using '{preset.presetName}' preset (up to {preset.maxLodTiers} tiers).");
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
 
-            resultMessage = $"Successfully converted {convertedCount} object(s) in '{report.prefabName}'. All normal scene instances automatically inherited the LODGroup setup.";
+            resultMessage = $"Successfully converted {convertedCount} object(s) in '{report.prefabName}' (up to {preset.maxLodTiers} LOD tiers).";
             return true;
         }
 
@@ -301,7 +313,7 @@ namespace MeshLODStudio.Editor
                     {
                         heights[i] = i < preset.tierScreenHeights.Count
                             ? preset.tierScreenHeights[i]
-                            : Mathf.Pow(0.45f, i + 1);
+                            : Mathf.Pow(0.55f, i + 1);
                     }
                 }
             }
