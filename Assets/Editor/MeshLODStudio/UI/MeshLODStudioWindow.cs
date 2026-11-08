@@ -11,7 +11,7 @@ namespace MeshLODStudio.Editor
 {
     /// <summary>
     /// Commercial-grade UI Toolkit EditorWindow for MeshLOD Studio.
-    /// Default workspace is Prefab Studio (Prefab-First workflow).
+    /// Supports up to 8 LOD levels (LOD0..LOD7) with optional far-distance procedural decimation.
     /// Open via Tools > MeshLOD Studio > Open Studio.
     /// </summary>
     public sealed class MeshLODStudioWindow : EditorWindow
@@ -34,11 +34,14 @@ namespace MeshLODStudio.Editor
 
         private static readonly Color[] LodBarColors = new Color[]
         {
-            new Color(0.18f, 0.55f, 0.34f),
-            new Color(0.20f, 0.45f, 0.78f),
-            new Color(0.68f, 0.48f, 0.14f),
-            new Color(0.58f, 0.25f, 0.68f),
-            new Color(0.45f, 0.45f, 0.50f)
+            new Color(0.18f, 0.55f, 0.34f), // LOD0
+            new Color(0.20f, 0.45f, 0.78f), // LOD1
+            new Color(0.68f, 0.48f, 0.14f), // LOD2
+            new Color(0.58f, 0.25f, 0.68f), // LOD3
+            new Color(0.16f, 0.52f, 0.56f), // LOD4
+            new Color(0.65f, 0.32f, 0.22f), // LOD5
+            new Color(0.42f, 0.46f, 0.20f), // LOD6
+            new Color(0.45f, 0.45f, 0.50f)  // LOD7
         };
 
         [MenuItem("Tools/MeshLOD Studio/Open Studio %#l", false, 10)]
@@ -253,7 +256,7 @@ namespace MeshLODStudio.Editor
 
             if (currentReport != null)
             {
-                SetStatus($"Scan completed: '{currentReport.prefabName}' — {currentReport.compatibleNodeCount} convertible object(s), {currentReport.maxDetectedLodLevels} max Mesh LOD levels.");
+                SetStatus($"Scan completed: '{currentReport.prefabName}' — {currentReport.compatibleNodeCount} convertible object(s), {currentReport.maxDetectedLodLevels} native Mesh LODs (extendable to 8 LODs).");
                 settings.RecordOperation("Scan Prefab", currentReport.prefabName, true, $"Found {currentReport.compatibleNodeCount} compatible mesh node(s).");
             }
         }
@@ -307,7 +310,7 @@ namespace MeshLODStudio.Editor
         private void BuildDashboardView()
         {
             var introCard = CreateCard("Dashboard Overview");
-            introCard.Add(new Label("MeshLOD Studio converts Unity 6.3 generated Mesh LODs (stored in shared mesh index buffers) into independent Unity LODGroups on your source Prefab assets. All normal scene instances inherit the changes automatically."));
+            introCard.Add(new Label("MeshLOD Studio converts Unity 6.3 generated Mesh LODs into up to 8 independent Unity LODGroup tiers (LOD0..LOD7) on your source Prefab assets, automatically synthesizing ultra-low-poly far LODs when Unity's importer stops at 3 levels."));
             workspaceScroll.Add(introCard);
 
             if (currentReport == null)
@@ -322,7 +325,7 @@ namespace MeshLODStudio.Editor
                 var metricRow = new VisualElement();
                 metricRow.AddToClassList("metric-row");
 
-                metricRow.Add(CreateMetricBox(currentReport.maxDetectedLodLevels.ToString(), "Max Mesh LOD Levels"));
+                metricRow.Add(CreateMetricBox($"{currentReport.maxDetectedLodLevels} (→ 8)", "Native (→ Max Far LODs)"));
                 metricRow.Add(CreateMetricBox(currentReport.compatibleNodeCount.ToString(), "Convertible Objects"));
                 metricRow.Add(CreateMetricBox(currentReport.existingLODGroupCount.ToString(), "Existing LODGroups"));
                 metricRow.Add(CreateMetricBox(currentReport.unsupportedNodeCount.ToString(), "Unsupported / Skipped"));
@@ -406,7 +409,7 @@ namespace MeshLODStudio.Editor
             deselectAllBtn.AddToClassList("secondary-button");
             deselectAllBtn.style.marginRight = 12;
 
-            var goConvertBtn = new Button(() => SwitchTab(WorkspaceTab.MeshLODConverter)) { text = "Configure & Convert Selected Objects →" };
+            var goConvertBtn = new Button(() => SwitchTab(WorkspaceTab.MeshLODConverter)) { text = "Configure & Convert Selected Objects (Up to 8 LODs) →" };
             goConvertBtn.AddToClassList("primary-button");
 
             batchBar.Add(selectAllBtn);
@@ -447,7 +450,7 @@ namespace MeshLODStudio.Editor
                         RefreshActiveWorkspace();
                     })
                     {
-                        text = $"{new string(' ', node.depth * 2)}{node.gameObjectName} ({node.detectedMeshLodCount} LODs, {node.baseTriangleCount} tris)",
+                        text = $"{new string(' ', node.depth * 2)}{node.gameObjectName} ({node.detectedMeshLodCount} native / {node.maxAvailableLodCount} max LODs, {node.baseTriangleCount} tris)",
                         style = { flexGrow = 1, unityTextAlign = TextAnchor.MiddleLeft, backgroundColor = Color.clear, borderLeftWidth = 0, borderRightWidth = 0, borderTopWidth = 0, borderBottomWidth = 0 }
                     };
                     row.Add(selectBtn);
@@ -461,8 +464,8 @@ namespace MeshLODStudio.Editor
                 }
             }
 
-            var detailCard = CreateCard("Selected Object Details & Interactive Preview");
-            detailCard.style.width = 430;
+            var detailCard = CreateCard("Selected Object Details & 8-LOD Preview");
+            detailCard.style.width = 450;
 
             if (currentReport.meshNodes.Count > 0 && selectedNodeIndex >= 0 && selectedNodeIndex < currentReport.meshNodes.Count)
             {
@@ -502,16 +505,17 @@ namespace MeshLODStudio.Editor
 
                 if (selNode.lodLevels.Count > 0)
                 {
-                    detailCard.Add(new Label("Detected Mesh LOD Index Buffer Levels:") { style = { unityFontStyleAndWeight = FontStyle.Bold, marginTop = 8 } });
+                    detailCard.Add(new Label("Available LOD Levels (Native + Far-Distance Decimated):") { style = { unityFontStyleAndWeight = FontStyle.Bold, marginTop = 8 } });
                     foreach (LodLevelMetadata meta in selNode.lodLevels)
                     {
-                        detailCard.Add(new Label($"• LOD{meta.lodIndex}: {meta.totalTriangleCount} tris ({meta.totalIndexCount} indices, ~{meta.estimatedUniqueVertices} verts) [-{meta.reductionPercentFromLod0:0.0}%]"));
+                        string sourceTag = meta.isSynthesizedFarLod ? "[Far-Decimated]" : "[Unity Native]";
+                        detailCard.Add(new Label($"• LOD{meta.lodIndex} {sourceTag}: {meta.totalTriangleCount} tris (~{meta.estimatedUniqueVertices} verts) [-{meta.reductionPercentFromLod0:0.0}%]"));
                     }
                 }
 
                 if (selNode.sharedMesh != null)
                 {
-                    BuildEmbeddedPreviewElement(detailCard, selNode.sharedMesh, selNode.sharedMaterials);
+                    BuildEmbeddedPreviewElement(detailCard, selNode.sharedMesh, selNode.sharedMaterials, selNode.maxAvailableLodCount);
                 }
             }
 
@@ -533,7 +537,7 @@ namespace MeshLODStudio.Editor
                 return;
             }
 
-            var configCard = CreateCard($"Convert Mesh LODs to LODGroup: {currentReport.prefabName}");
+            var configCard = CreateCard($"Convert Mesh LODs to LODGroup (Up to 8 Tiers): {currentReport.prefabName}");
             MeshLODPreset activePreset = GetSelectedPreset();
 
             var presetChoices = new List<string>();
@@ -573,8 +577,11 @@ namespace MeshLODStudio.Editor
             });
             configCard.Add(fadeField);
 
-            var maxTiersSlider = new SliderInt("Max LOD Tiers to Generate", 2, 6) { value = activePreset.maxLodTiers };
-            maxTiersSlider.showInputField = true;
+            var maxTiersSlider = new SliderInt("Max LOD Tiers to Generate (2..8)", 2, 8)
+            {
+                value = Mathf.Clamp(activePreset.maxLodTiers, 2, 8),
+                showInputField = true
+            };
             maxTiersSlider.RegisterValueChangedCallback(evt =>
             {
                 activePreset.maxLodTiers = evt.newValue;
@@ -582,6 +589,33 @@ namespace MeshLODStudio.Editor
                 RefreshActiveWorkspace();
             });
             configCard.Add(maxTiersSlider);
+
+            var synthToggle = new Toggle("Synthesize Extra Far-Away LODs (Decimate Beyond Unity's 3-LOD Limit)")
+            {
+                value = activePreset.synthesizeExtraFarLods
+            };
+            synthToggle.RegisterValueChangedCallback(evt =>
+            {
+                activePreset.synthesizeExtraFarLods = evt.newValue;
+                EditorUtility.SetDirty(settings);
+                RefreshActiveWorkspace();
+            });
+            configCard.Add(synthToggle);
+
+            if (activePreset.synthesizeExtraFarLods)
+            {
+                var floorSlider = new SliderInt("Minimum Triangle Floor for Far LODs", 2, 64)
+                {
+                    value = activePreset.minTrianglesFloor,
+                    showInputField = true
+                };
+                floorSlider.RegisterValueChangedCallback(evt =>
+                {
+                    activePreset.minTrianglesFloor = evt.newValue;
+                    EditorUtility.SetDirty(settings);
+                });
+                configCard.Add(floorSlider);
+            }
 
             BuildPresetThresholdSliders(configCard, activePreset);
 
@@ -601,7 +635,7 @@ namespace MeshLODStudio.Editor
                 }
             })
             {
-                text = $"Convert Selected Objects in '{currentReport.prefabName}' & Save Prefab"
+                text = $"Convert Selected Objects in '{currentReport.prefabName}' ({activePreset.maxLodTiers} LOD Tiers) & Save"
             };
             convertBtn.AddToClassList("primary-button");
             actionRow.Add(convertBtn);
@@ -695,7 +729,7 @@ namespace MeshLODStudio.Editor
                     distLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
                     tierBox.Add(distLabel);
 
-                    var heightSlider = new Slider("Transition Screen Height (0..1)", 0.001f, 0.99f)
+                    var heightSlider = new Slider("Transition Screen Height (0..1)", 0.0005f, 0.99f)
                     {
                         value = editedHeights[tierIdx],
                         showInputField = true
@@ -857,9 +891,9 @@ namespace MeshLODStudio.Editor
                     row.AddToClassList("table-row");
 
                     row.Add(new Label(rep.prefabName) { style = { width = 180, unityFontStyleAndWeight = FontStyle.Bold } });
-                    row.Add(new Label($"{rep.compatibleNodeCount} convertible / {rep.maxDetectedLodLevels} max LODs") { style = { flexGrow = 1 } });
+                    row.Add(new Label($"{rep.compatibleNodeCount} convertible / {rep.maxDetectedLodLevels} native (→ 8 max) LODs") { style = { flexGrow = 1 } });
 
-                    var presetPopup = new PopupField<string>(presetNames, rep.selectedPresetName) { style = { width = 140, marginRight = 8 } };
+                    var presetPopup = new PopupField<string>(presetNames, rep.selectedPresetName) { style = { width = 160, marginRight = 8 } };
                     presetPopup.RegisterValueChangedCallback(evt => rep.selectedPresetName = evt.newValue);
                     row.Add(presetPopup);
 
@@ -943,7 +977,7 @@ namespace MeshLODStudio.Editor
         }
 
         // ====================================================================
-        // 6. SCENE AUTO SETUP WORKSPACE (EXPLICIT OPT-IN)
+        // 6. SCENE AUTO SETUP WORKSPACE
         // ====================================================================
         private void BuildSceneAutoSetupView()
         {
@@ -997,7 +1031,7 @@ namespace MeshLODStudio.Editor
 
                 row.Add(new Label(group.statusSummary) { style = { flexGrow = 1 } });
 
-                var presetField = new PopupField<string>(presetNames, group.assignedPresetName) { style = { width = 135 } };
+                var presetField = new PopupField<string>(presetNames, group.assignedPresetName) { style = { width = 160 } };
                 presetField.RegisterValueChangedCallback(evt => group.assignedPresetName = evt.newValue);
                 row.Add(presetField);
 
@@ -1101,7 +1135,7 @@ namespace MeshLODStudio.Editor
         // ====================================================================
         private void BuildPresetManagerView()
         {
-            var card = CreateCard("Preset Manager (Cross-Project Reusable Presets)");
+            var card = CreateCard("Preset Manager (Up to 8 LOD Levels & Far Decimation)");
             MeshLODPreset activePreset = GetSelectedPreset();
 
             var topBar = new VisualElement { style = { flexDirection = FlexDirection.Row, marginBottom = 10 } };
@@ -1131,6 +1165,18 @@ namespace MeshLODStudio.Editor
             dupBtn.AddToClassList("secondary-button");
             dupBtn.style.marginRight = 6;
             topBar.Add(dupBtn);
+
+            var resetPresetsBtn = new Button(() =>
+            {
+                settings.InitializeDefaultPresets();
+                selectedPresetIndex = 0;
+                EditorUtility.SetDirty(settings);
+                AssetDatabase.SaveAssets();
+                RefreshActiveWorkspace();
+            }) { text = "Reset Built-In Presets" };
+            resetPresetsBtn.AddToClassList("secondary-button");
+            resetPresetsBtn.style.marginRight = 6;
+            topBar.Add(resetPresetsBtn);
 
             var delBtn = new Button(() =>
             {
@@ -1183,6 +1229,30 @@ namespace MeshLODStudio.Editor
                 EditorUtility.SetDirty(settings);
             });
             card.Add(descField);
+
+            var tiersSlider = new SliderInt("Max LOD Tiers (2..8)", 2, 8)
+            {
+                value = Mathf.Clamp(activePreset.maxLodTiers, 2, 8),
+                showInputField = true
+            };
+            tiersSlider.RegisterValueChangedCallback(evt =>
+            {
+                activePreset.maxLodTiers = evt.newValue;
+                EditorUtility.SetDirty(settings);
+                RefreshActiveWorkspace();
+            });
+            card.Add(tiersSlider);
+
+            var synthToggle = new Toggle("Synthesize Extra Far-Away LODs (Up to 8 Tiers)")
+            {
+                value = activePreset.synthesizeExtraFarLods
+            };
+            synthToggle.RegisterValueChangedCallback(evt =>
+            {
+                activePreset.synthesizeExtraFarLods = evt.newValue;
+                EditorUtility.SetDirty(settings);
+            });
+            card.Add(synthToggle);
 
             BuildPresetThresholdSliders(card, activePreset);
             workspaceScroll.Add(card);
@@ -1264,7 +1334,7 @@ namespace MeshLODStudio.Editor
             workspaceScroll.Add(card);
 
             var testCard = CreateCard("Automated 15-Case Verification & Test Suite");
-            testCard.Add(new Label("Runs automated verification against temporary synthetic prefabs and meshes (covering single-mesh, multi-child, nested prefabs, variants, overrides, rollback, and batching) and cleans up all temporary assets afterward."));
+            testCard.Add(new Label("Runs automated verification against temporary synthetic prefabs and meshes (covering single-mesh, multi-child, nested prefabs, variants, overrides, rollback, 8-tier far decimation, and batching) and cleans up all temporary assets afterward."));
 
             var runTestsBtn = new Button(() =>
             {
@@ -1284,37 +1354,43 @@ namespace MeshLODStudio.Editor
         // ====================================================================
         // SHARED UI HELPERS
         // ====================================================================
-        private void BuildEmbeddedPreviewElement(VisualElement parent, Mesh mesh, Material[] materials)
+        private void BuildEmbeddedPreviewElement(VisualElement parent, Mesh mesh, Material[] materials, int availableTiers)
         {
             previewController.SetTarget(mesh, materials);
             MeshLODPreset activePreset = GetSelectedPreset();
 
-            var previewHeader = new Label("Interactive 3D LOD & Distance Preview (Non-Destructive)")
+            int buttonTierCount = Mathf.Clamp(Mathf.Max(mesh.lodCount, availableTiers), 1, 8);
+
+            var previewHeader = new Label("Interactive 3D LOD & Far-Distance Preview (LOD0..LOD7)")
             {
                 style = { unityFontStyleAndWeight = FontStyle.Bold, marginTop = 10, marginBottom = 4 }
             };
             parent.Add(previewHeader);
 
-            var lodBtnBar = new VisualElement { style = { flexDirection = FlexDirection.Row, marginBottom = 6 } };
-            var autoBtn = new Button(() => previewController.forcedPreviewLod = -1) { text = "Auto (By Distance)" };
+            var lodBtnBar = new VisualElement { style = { flexDirection = FlexDirection.Row, flexWrap = Wrap.Wrap, marginBottom = 6 } };
+            var autoBtn = new Button(() => previewController.forcedPreviewLod = -1) { text = "Auto" };
             autoBtn.AddToClassList("secondary-button");
             lodBtnBar.Add(autoBtn);
 
-            for (int l = 0; l < mesh.lodCount; l++)
+            for (int l = 0; l < buttonTierCount; l++)
             {
                 int lodIdx = l;
-                var btn = new Button(() => previewController.forcedPreviewLod = lodIdx) { text = $"LOD{lodIdx}" };
+                var btn = new Button(() => previewController.forcedPreviewLod = lodIdx)
+                {
+                    text = l < mesh.lodCount ? $"LOD{lodIdx}" : $"LOD{lodIdx}*"
+                };
                 btn.AddToClassList("secondary-button");
-                btn.style.marginLeft = 4;
+                btn.style.marginLeft = 3;
+                btn.style.marginBottom = 3;
                 lodBtnBar.Add(btn);
             }
 
-            var wireToggle = new Toggle("Wireframe") { value = previewController.showWireframe, style = { marginLeft = 8 } };
+            var wireToggle = new Toggle("Wireframe") { value = previewController.showWireframe, style = { marginLeft = 6 } };
             wireToggle.RegisterValueChangedCallback(evt => previewController.showWireframe = evt.newValue);
             lodBtnBar.Add(wireToggle);
             parent.Add(lodBtnBar);
 
-            var distSlider = new Slider("Simulated Camera Distance (m)", 0.5f, 200f)
+            var distSlider = new Slider("Simulated Camera Distance (m)", 0.5f, 300f)
             {
                 value = previewController.simulatedDistanceMeters,
                 showInputField = true
@@ -1324,7 +1400,7 @@ namespace MeshLODStudio.Editor
 
             var imguiPreview = new IMGUIContainer(() =>
             {
-                Rect r = GUILayoutUtility.GetRect(390f, 220f);
+                Rect r = GUILayoutUtility.GetRect(410f, 220f);
                 Event e = Event.current;
                 if (e.type == EventType.MouseDrag && r.Contains(e.mousePosition))
                 {
@@ -1341,9 +1417,10 @@ namespace MeshLODStudio.Editor
                 }
 
                 string modeStr = previewController.forcedPreviewLod < 0 ? "Auto" : "Locked";
-                string overlayText = previewController.activeRenderedLodIndex >= mesh.lodCount
+                string farTag = previewController.activeRenderedLodIndex >= mesh.lodCount ? " (Far-Decimated)" : " (Native)";
+                string overlayText = previewController.activeRenderedTriangles == 0
                     ? $"[CULLED]  Distance: {previewController.simulatedDistanceMeters:0.1}m  |  Screen Height: {(previewController.activeScreenRelativeHeight * 100f):0.1}%"
-                    : $"[{modeStr}: LOD{previewController.activeRenderedLodIndex}]  {previewController.activeRenderedTriangles} tris  |  Dist: {previewController.simulatedDistanceMeters:0.1}m  |  Screen Height: {(previewController.activeScreenRelativeHeight * 100f):0.1}%";
+                    : $"[{modeStr}: LOD{previewController.activeRenderedLodIndex}{farTag}]  {previewController.activeRenderedTriangles} tris  |  Dist: {previewController.simulatedDistanceMeters:0.1}m";
 
                 EditorGUI.DrawRect(new Rect(r.x, r.yMax - 22f, r.width, 22f), new Color(0f, 0f, 0f, 0.7f));
                 GUI.Label(new Rect(r.x + 8f, r.yMax - 20f, r.width - 16f, 20f), overlayText, EditorStyles.whiteMiniLabel);
@@ -1353,16 +1430,18 @@ namespace MeshLODStudio.Editor
 
         private void BuildPresetThresholdSliders(VisualElement container, MeshLODPreset preset)
         {
-            while (preset.tierScreenHeights.Count < 5) preset.tierScreenHeights.Add(0.02f);
-            while (preset.tierDistancesMeters.Count < 5) preset.tierDistancesMeters.Add(100f);
+            while (preset.tierScreenHeights.Count < 8)
+                preset.tierScreenHeights.Add(Mathf.Max(0.002f, preset.tierScreenHeights[preset.tierScreenHeights.Count - 1] * 0.5f));
+            while (preset.tierDistancesMeters.Count < 8)
+                preset.tierDistancesMeters.Add(preset.tierDistancesMeters[preset.tierDistancesMeters.Count - 1] + 40f);
 
-            int count = Mathf.Clamp(preset.maxLodTiers - 1, 1, 5);
+            int count = Mathf.Clamp(preset.maxLodTiers - 1, 1, 7);
             for (int i = 0; i < count; i++)
             {
                 int idx = i;
                 if (preset.inputMode == ThresholdInputMode.ScreenRelativePercentage)
                 {
-                    var s = new Slider($"LOD{idx} → LOD{idx + 1} Screen Height", 0.01f, 0.95f)
+                    var s = new Slider($"LOD{idx} → LOD{idx + 1} Screen Height", 0.002f, 0.95f)
                     {
                         value = preset.tierScreenHeights[idx],
                         showInputField = true
@@ -1391,7 +1470,7 @@ namespace MeshLODStudio.Editor
 
             if (preset.inputMode == ThresholdInputMode.ScreenRelativePercentage)
             {
-                var cullSlider = new Slider("Final Culling Screen Height", 0.001f, 0.25f)
+                var cullSlider = new Slider("Final Culling Screen Height", 0.0005f, 0.25f)
                 {
                     value = preset.cullScreenRelativeHeight,
                     showInputField = true
@@ -1452,7 +1531,7 @@ namespace MeshLODStudio.Editor
                         alignItems = Align.Center
                     }
                 };
-                seg.Add(new Label($"LOD{i} ({(h * 100f):0}%)") { style = { fontSize = 10, unityFontStyleAndWeight = FontStyle.Bold, color = Color.white } });
+                seg.Add(new Label($"LOD{i} ({(h * 100f):0.#}%)") { style = { fontSize = 10, unityFontStyleAndWeight = FontStyle.Bold, color = Color.white } });
                 bar.Add(seg);
             }
 
