@@ -1,20 +1,8 @@
 #if UNITY_EDITOR
-using System;
 using UnityEngine;
 
 namespace MeshLODStudio.Editor
 {
-    /// <summary>
-    /// Converts between Unity LODGroup screen-relative height (0..1) and approximate
-    /// world-space camera distances in metres for both Perspective and Orthographic cameras.
-    ///
-    /// Formula (Perspective):
-    ///   screenRelativeHeight = objectSize / (2 * distance * tan(FOV * 0.5))
-    ///   distance = objectSize / (2 * screenRelativeHeight * tan(FOV * 0.5))
-    ///
-    /// Formula (Orthographic):
-    ///   screenRelativeHeight = objectSize / (2 * orthoSize)
-    /// </summary>
     public static class DistanceThresholdCalculator
     {
         public static float GetObjectWorldSize(Bounds worldBounds)
@@ -64,18 +52,14 @@ namespace MeshLODStudio.Editor
             return Mathf.Max(0.1f, distance);
         }
 
-        /// <summary>
-        /// Ensures a strictly descending array of screen-relative transition heights
-        /// as required by Unity's LODGroup.SetLODs API.
-        /// </summary>
         public static void EnforceStrictlyDescendingThresholds(float[] thresholds)
         {
             if (thresholds == null || thresholds.Length == 0) return;
 
-            thresholds[0] = Mathf.Clamp(thresholds[0], 0.01f, 0.99f);
+            thresholds[0] = Mathf.Clamp(thresholds[0], 0.02f, 0.99f);
             for (int i = 1; i < thresholds.Length; i++)
             {
-                float maxAllowed = Mathf.Max(0.001f, thresholds[i - 1] - 0.01f);
+                float maxAllowed = Mathf.Max(0.0005f, thresholds[i - 1] - 0.005f);
                 thresholds[i] = Mathf.Clamp(thresholds[i], 0.0005f, maxAllowed);
             }
         }
